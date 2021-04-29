@@ -18,7 +18,6 @@
 #include <sys/epoll.h>
 #include <pthread.h>
 #include <arpa/inet.h>
-#include <linux/in.h>
 #include "convert.h"
 #include "camera.h"
 #include "serial_com.h"
