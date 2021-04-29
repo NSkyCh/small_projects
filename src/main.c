@@ -15,17 +15,16 @@
 #include <errno.h>
 #include <unistd.h>
 #include <sys/socket.h>
-#include <linux/in.h>
 #include <sys/epoll.h>
+#include <pthread.h>
+#include <arpa/inet.h>
+#include <linux/in.h>
 #include "convert.h"
 #include "camera.h"
 #include "serial_com.h"
 
-
 int init_server(void);
 void add_epic(int epfd,int fd);
-
-
 
 // 基本数据
 typedef struct _m0_device{
@@ -95,7 +94,8 @@ volatile int lock_camera = 0;
 // 串口接收模块(线程0)
 void *serial(void* arg){
 	msg_data *msg;
-	unsigned char recvdata[36],send_data[32];
+	unsigned char recvdata[36];
+	char send_data[32];
 	unsigned char *q;
 	
 	pthread_detach(pthread_self());	
@@ -119,8 +119,8 @@ void *serial(void* arg){
 		{
 			memset(send_data,0,sizeof(send_data));
 
-			sprintf(send_data,"%d.%d_%d.%d_%d",msg->tem.tem_h,msg->tem.tem_l,\
-					msg->hum.hum_h,msg->hum.hum_l,msg->light.light_t);
+			sprintf(send_data,"%d.%d_%d.%d_%d",msg->tem.tem_h, msg->tem.tem_l,\
+					msg->hum.hum_h, msg->hum.hum_l, msg->light.light_t);
 			printf("%s\n",send_data);
 			
 			write(acceptfd[0],send_data,32);
@@ -130,6 +130,7 @@ void *serial(void* arg){
 	}
 	serial_Close(serialfd);
 	serialfd = -1;
+	return arg;
 }
 
 // 摄像头模块(线程1)
@@ -147,6 +148,7 @@ void *camera(void* arg){
 	}
 	close_camera(cameraFd);
 	cameraFd = -1;
+	return arg;
 }
 
 
@@ -156,12 +158,12 @@ int main(int argc, const char *argv[])
 	int sockfd;
 	
 	struct sockaddr_in clientaddr;
-	int clientlen ;
+	socklen_t clientlen ;
 
-	int epfd,epct,i,j,re,ret,num=0;
+	int epfd,epct,i,re,ret,num=0;
 	struct epoll_event events[20];
 	struct epoll_event event;
-	char buf[32],temp[32],send_data[32];
+	char buf[32],temp[32];
 
 	unsigned char senddata[7][36]={{0x00,0x00,0x00,0x00,0x00},
 								   {0xdd,0x09,0x24,0x00,0x00},
@@ -170,12 +172,8 @@ int main(int argc, const char *argv[])
 								   {0xdd,0x09,0x24,0x00,0x08},
 								   {0xdd,0x09,0x24,0x00,0x02},
 								   {0xdd,0x09,0x24,0x00,0x03}};// 1 开灯，2 关闭灯，3开风扇，4关闭风扇，5开蜂鸣器，6关闭蜂鸣器
-	unsigned char *p,*q;
+	unsigned char *p;
 	
-	
-	
-
-
 	epfd=epoll_create(1);
 	
 	sockfd = init_server();
@@ -209,7 +207,7 @@ int main(int argc, const char *argv[])
 						break;
 					}
 				}
-				acceptfd[num] = accept(sockfd,(struct sockaddr *)&clientaddr,&clientlen);
+				acceptfd[num] = accept(sockfd, (struct sockaddr *)&clientaddr, &clientlen);
 				add_epic(epfd,acceptfd[num]);
 				printf("accept ok !!!!\n");
 				if(num == 0)
@@ -239,7 +237,7 @@ int main(int argc, const char *argv[])
 					if(cameraFd > 0)
 					{
 						// 关闭摄像头
-						lock_camera == 1;
+						lock_camera = 1;
 					//	close_camera(cameraFd);
 					//	cameraFd = -1;
 						printf("close camera!!!\n"); 						
@@ -348,7 +346,7 @@ int init_server(void)
 
 	serveraddr.sin_family = AF_INET;
 	serveraddr.sin_port = htons(atoi("8888"));
-	serveraddr.sin_addr.s_addr = inet_addr("192.168.1.171");
+	serveraddr.sin_addr.s_addr = inet_addr("127.0.0.1");
 
 	
 	setsockopt(sockfd,SOL_SOCKET,SO_REUSEADDR,&val,sizeof(val));
